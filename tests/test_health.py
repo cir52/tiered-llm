@@ -55,11 +55,12 @@ async def test_background_loop_closes_recovered_circuits(tmp_path):
     breaker = registry.get("p")
     breaker.trip(0.01)
     log = DecisionLog(tmp_path / "d.jsonl", fsync=False)
+    closed = asyncio.Event()
+    breaker.add_listener(lambda name, old, new: new is BreakerState.CLOSED and closed.set())
     async with HealthMonitor([(provider, breaker)], interval=0.01, decision_log=log):
-        for _ in range(100):
-            if breaker.state is BreakerState.CLOSED:
-                break
-            await asyncio.sleep(0.01)
+        # Wait for the transition itself, not a number of short sleeps: on Windows,
+        # sleeps below the ~15 ms timer resolution can return without time passing.
+        await asyncio.wait_for(closed.wait(), timeout=5)
     log.close()
     assert breaker.state is BreakerState.CLOSED
     assert any(e["event"] == "health_probe" and e["healthy"] for e in iter_decisions(tmp_path / "d.jsonl"))
