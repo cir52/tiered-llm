@@ -1,0 +1,35 @@
+# One config surface for local and cloud models.
+# Swapping a vendor or reordering a fallback chain is an edit here, not in code.
+# API keys are never stored in this file: each provider reads the env var in api_key_env.
+
+attempt_timeout = 60
+log_content = false        # prompts/responses stay out of the decision log unless enabled
+
+[breaker]                  # defaults for every provider
+failure_threshold = 3
+recovery_timeout = 30
+max_recovery_timeout = 180
+
+[providers.local]
+type = "ollama"
+model = "qwen3:14b"        # screening model on your own GPU
+
+[providers.claude-proxy]   # first hop: gateway
+type = "openrouter"
+model = "anthropic/claude-sonnet-4.5"
+pricing = { input_per_mtok = 3.0, output_per_mtok = 15.0 }
+
+[providers.claude-direct]  # second hop: same model, vendor API, different key and network path
+type = "anthropic"
+model = "claude-sonnet-4-5"
+pricing = { input_per_mtok = 3.0, output_per_mtok = 15.0 }
+
+[providers.gemini]
+type = "gemini"
+model = "gemini-2.5-flash"
+pricing = { input_per_mtok = 0.3, output_per_mtok = 2.5 }
+breaker = { failure_threshold = 4, recovery_timeout = 15, max_recovery_timeout = 120 }
+
+[routes]
+screen = ["local", "gemini"]
+decide = ["claude-proxy", "claude-direct", "gemini"]
